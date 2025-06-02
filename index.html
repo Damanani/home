@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monitoring & Kontrol Energi</title>
+
+    <!-- Bootstrap 5 -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+
+    <!-- Bootstrap Icons -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"
+    />
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <style>
+      body {
+        background-color: #f5f5f5;
+        padding: 20px;
+      }
+
+      .card {
+        border-radius: 12px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      .badge-on {
+        background-color: green;
+      }
+
+      .badge-off {
+        background-color: red;
+      }
+
+      canvas {
+        background: #fff;
+        border-radius: 10px;
+        padding: 10px;
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2 class="text-center mb-4">📡 Monitoring & Kontrol Energi</h2>
+
+      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        <!-- Monitoring Cards with Icons -->
+        <div class="col">
+          <div class="card p-3">
+            <strong><i class="bi bi-lightning"></i> Voltage:</strong>
+            <span id="voltage">Loading...</span> V
+          </div>
+        </div>
+        <div class="col">
+          <div class="card p-3">
+            <strong><i class="bi bi-battery-charging"></i> Current:</strong>
+            <span id="current">Loading...</span> A
+          </div>
+        </div>
+        <div class="col">
+          <div class="card p-3">
+            <strong><i class="bi bi-activity"></i> Current (mA):</strong>
+            <span id="current_mA">Loading...</span> mA
+          </div>
+        </div>
+        <div class="col">
+          <div class="card p-3">
+            <strong><i class="bi bi-lightbulb"></i> Power:</strong>
+            <span id="power">Loading...</span> W
+          </div>
+        </div>
+        <div class="col">
+          <div class="card p-3">
+            <strong><i class="bi bi-plug"></i> Apparent Power:</strong>
+            <span id="apparentPower">Loading...</span> VA
+          </div>
+        </div>
+        <div class="col">
+          <div class="card p-3">
+            <strong><i class="bi bi-magic"></i> Reactive Power:</strong>
+            <span id="reactivePower">Loading...</span> VAR
+          </div>
+        </div>
+        <div class="col">
+          <div class="card p-3">
+            <strong><i class="bi bi-recycle"></i> Energy:</strong>
+            <span id="energy">Loading...</span> kWh
+          </div>
+        </div>
+        <div class="col">
+          <div class="card p-3">
+            <strong><i class="bi bi-speedometer2"></i> Frequency:</strong>
+            <span id="frequency">Loading...</span> Hz
+          </div>
+        </div>
+        <div class="col">
+          <div class="card p-3">
+            <strong><i class="bi bi-percent"></i> Power Factor:</strong>
+            <span id="pf">Loading...</span>
+          </div>
+        </div>
+        <div class="col">
+          <div class="card p-3">
+            <strong><i class="bi bi-box-arrow-in-down"></i> Masuk:</strong>
+            <span id="masuk">Loading...</span>
+          </div>
+        </div>
+        <div class="col">
+          <div class="card p-3">
+            <strong><i class="bi bi-box-arrow-up"></i> Keluar:</strong>
+            <span id="keluar">Loading...</span>
+          </div>
+        </div>
+        <div class="col">
+          <div class="card p-3">
+            <strong
+              ><i class="bi bi-clock-history"></i> Energy Reset Time:</strong
+            >
+            <span id="energy_reset_time">Loading...</span>
+          </div>
+        </div>
+
+        <!-- Relay Control -->
+        <div class="col">
+          <div class="card text-center p-3">
+            <strong><i class="bi bi-power"></i> Relay Status:</strong>
+            <div>
+              <span id="relay" class="badge fs-6">Loading...</span>
+            </div>
+            <button id="relayToggleBtn" class="btn btn-primary mt-3">
+              Toggle Relay
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Grafik Current (mA) -->
+      <div class="mt-5">
+        <h5><i class="bi bi-graph-up-arrow"></i> Grafik Arus (mA)</h5>
+        <canvas id="currentChart" height="120"></canvas>
+      </div>
+    </div>
+
+    <script>
+      // Firebase config
+      const firebaseConfig = {
+        apiKey: "AIzaSyAMqxkBgNXzF4aB8dk5DdcUdY8XRL-9rNI",
+        authDomain: "home-25fd1.firebaseapp.com",
+        databaseURL: "https://home-25fd1-default-rtdb.firebaseio.com",
+        projectId: "home-25fd1",
+        storageBucket: "home-25fd1.appspot.com",
+        messagingSenderId: "893440021332",
+        appId: "1:893440021332:web:bcfc9f399146df35696ec1",
+        measurementId: "G-G1EJP0CJH3",
+      };
+
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.database();
+      const ref = db.ref("monitoring");
+
+      let relayStatus = false;
+
+      const labels = [];
+      const currentData = [];
+
+      const ctx = document.getElementById("currentChart").getContext("2d");
+      const currentChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: "Current (mA)",
+              data: currentData,
+              borderColor: "rgba(75,192,192,1)",
+              backgroundColor: "rgba(75,192,192,0.2)",
+              tension: 0.3,
+              fill: true,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: {
+              title: {
+                display: true,
+                text: "Waktu",
+              },
+            },
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: "mA",
+              },
+            },
+          },
+        },
+      });
+
+      ref.on("value", (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          document.getElementById("voltage").textContent = data.voltage ?? "0";
+          document.getElementById("current").textContent = data.current ?? "0";
+          document.getElementById("current_mA").textContent =
+            data.current_mA ?? "0";
+          document.getElementById("power").textContent = data.power ?? "0";
+          document.getElementById("apparentPower").textContent =
+            data.apparentPower ?? "0";
+          document.getElementById("reactivePower").textContent =
+            data.reactivePower ?? "0";
+          document.getElementById("energy").textContent = data.energy ?? "0";
+          document.getElementById("frequency").textContent =
+            data.frequency ?? "0";
+          document.getElementById("pf").textContent = data.pf ?? "0";
+          document.getElementById("masuk").textContent = data.masuk ?? "0";
+          document.getElementById("keluar").textContent = data.keluar ?? "0";
+          document.getElementById("energy_reset_time").textContent =
+            data.energy_reset_time ?? "0";
+
+          // Relay status
+          relayStatus = data.relay ?? false;
+          const relayElement = document.getElementById("relay");
+          relayElement.textContent = relayStatus ? "ON" : "OFF";
+          relayElement.className =
+            "badge " + (relayStatus ? "badge-on" : "badge-off");
+
+          // Update chart
+          const time = new Date().toLocaleTimeString();
+          labels.push(time);
+          currentData.push(parseFloat(data.current_mA ?? 0));
+          if (labels.length > 20) {
+            labels.shift();
+            currentData.shift();
+          }
+          currentChart.update();
+        }
+      });
+
+      document
+        .getElementById("relayToggleBtn")
+        .addEventListener("click", () => {
+          const newStatus = !relayStatus;
+          ref.update({ relay: newStatus });
+        });
+    </script>
+  </body>
+</html>
